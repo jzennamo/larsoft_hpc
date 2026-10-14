@@ -1,7 +1,6 @@
 import sqlite3
 import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
-import csv
 import io
 
 DB_FILE = "ifbeam.db"
@@ -74,17 +73,15 @@ class IFBeamHandler(BaseHTTPRequestHandler):
             rows = cursor.fetchall()
             conn.close()
             
-            # Write to CSV string
+            # Write rows exactly as the live API does. Array values (e.g. BNBMultiWire)
+            # are stored comma-joined and IFBeam sends them unquoted; csv.writer would
+            # quote them, and the IFBeam client's multiwire unpacking then fails
+            # ("MRWData: Bad data!") and ICARUSBNBRetriever crashes.
             output = io.StringIO()
-            writer = csv.writer(output)
-            writer.writerow(['timestamp', 'name', 'units', 'value(s)'])
-            for row in rows:
-                # Format to exactly match the API's CSV output
-                writer.writerow(row)
-                
-            # Use carriage returns as well to match curl output exactly if needed, 
-            # though python's csv module uses CRLF by default on windows, we can leave as is.
-            csv_data = output.getvalue().replace('\r\n', '\n').encode('utf-8')
+            output.write("timestamp,name,units,value(s)\n")
+            for ts, name, units, value in rows:
+                output.write(f"{ts},{name},{units},{value}\n")
+            csv_data = output.getvalue().encode('utf-8')
             
             self.send_response(200)
             self.send_header('Content-Type', 'text/plain; charset=UTF-8')
